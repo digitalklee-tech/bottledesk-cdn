@@ -20,7 +20,7 @@
 (function () {
   'use strict';
 
-  // ── Config from script tag ────────────────────────────────────────────────
+  // ── Config from script tag ───────────────────────────────────────────────
   const script    = document.currentScript;
   const storeId   = script.getAttribute('data-store-id')   || 'demo';
   const tier      = script.getAttribute('data-tier')        || 'growth';
