@@ -5,16 +5,20 @@
  * Usage:
  *   <script
  *     src="https://cdn.bottledesk.ai/widget.js"
- *     data-store-id="mountainview"
- *     data-tier="premium"
- *     data-store-name="Mountainview Liquor"
+ *     data-store-id="gastowntable"
+ *     data-tier="hospitality"
+ *     data-store-name="Gastown Table"
  *     data-accent="#c9a84c"
  *     data-position="right">
  *   </script>
  *
  * SaaS-safe: all config comes from data- attributes.
  * No dependencies. Vanilla JS + CSS injected into shadow DOM.
- * Communicates with BottleDesk API at api.bottledesk.ai/widget/chat
+ * Communicates with BottleDesk API at api.bottledesk.ai
+ *
+ * Tabs:
+ *   - Chat (all tiers)
+ *   - Book a Table (hospitality tier only)
  */
 
 (function () {
@@ -29,6 +33,8 @@
   const position  = script.getAttribute('data-position')    || 'right';
   const apiBase   = script.getAttribute('data-api')         || 'https://api.bottledesk.ai';
 
+  const isHospitality = tier === 'hospitality';
+
   // ── Suggested quick replies per tier ─────────────────────────────────────
   const QUICK_REPLIES = [
     "What are your hours?",
@@ -39,9 +45,10 @@
   ];
 
   // ── Conversation history (sent with each message for context) ────────────
-  let messages = [];
-  let isOpen   = false;
-  let isTyping = false;
+  let messages  = [];
+  let isOpen    = false;
+  let isTyping  = false;
+  let activeTab = 'chat'; // 'chat' | 'reserve'
 
   // ── Inject styles ─────────────────────────────────────────────────────────
   const CSS = `
@@ -129,7 +136,7 @@
       ${position === 'left' ? 'left: 24px' : 'right: 24px'};
       bottom: 92px;
       width: 380px;
-      max-height: 600px;
+      max-height: 620px;
       background: var(--bg);
       border-radius: var(--radius);
       border: 1px solid var(--border);
@@ -205,6 +212,52 @@
     }
 
     .bd-info-row a:hover { text-decoration: underline; }
+
+    /* ── Tab bar ── */
+    #bd-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    .bd-tab {
+      flex: 1;
+      padding: 10px 0;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 400;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .bd-tab:hover { color: var(--text); }
+
+    .bd-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    /* ── Tab content panels ── */
+    .bd-tab-content {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .bd-tab-content.active {
+      display: flex;
+    }
 
     /* ── Messages ── */
     #bd-messages {
@@ -359,6 +412,192 @@
     #bd-send:active { transform: scale(0.97); }
     #bd-send:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
+    /* ── Reservation form ── */
+    #bd-reserve-panel {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    #bd-reserve-panel::-webkit-scrollbar { width: 4px; }
+    #bd-reserve-panel::-webkit-scrollbar-track { background: transparent; }
+    #bd-reserve-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .bd-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .bd-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .bd-input, .bd-select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13.5px;
+      font-weight: 300;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.15s;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    .bd-input::placeholder { color: var(--text-muted); }
+    .bd-input:focus, .bd-select:focus { border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+
+    .bd-select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%238a8680' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+      cursor: pointer;
+    }
+
+    .bd-select option {
+      background: #1e2120;
+      color: #e8e4df;
+    }
+
+    .bd-select:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .bd-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .bd-submit {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      color: #0d0f0e;
+      border: none;
+      border-radius: 10px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.15s, opacity 0.15s;
+      margin-top: 4px;
+    }
+
+    .bd-submit:hover  { background: var(--accent-dark); transform: scale(1.01); }
+    .bd-submit:active { transform: scale(0.98); }
+    .bd-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    /* Slot loading spinner */
+    .bd-slots-loading {
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 8px 0 0;
+      display: none;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .bd-slots-loading.show { display: flex; }
+
+    .bd-spinner {
+      width: 12px;
+      height: 12px;
+      border: 1.5px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: bd-spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes bd-spin { to { transform: rotate(360deg); } }
+
+    /* ── Confirmation screen ── */
+    #bd-confirm-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      padding: 32px 20px;
+      text-align: center;
+      gap: 12px;
+      animation: bd-msg-in 0.3s ease;
+    }
+
+    #bd-confirm-screen.show { display: flex; }
+
+    .bd-confirm-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: color-mix(in srgb, var(--accent) 15%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 4px;
+    }
+
+    .bd-confirm-title {
+      font-family: 'DM Serif Display', serif;
+      font-size: 20px;
+      color: var(--text);
+    }
+
+    .bd-confirm-detail {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      font-weight: 300;
+    }
+
+    .bd-confirm-sms {
+      font-size: 12px;
+      color: var(--text-muted);
+      opacity: 0.7;
+      margin-top: 4px;
+    }
+
+    .bd-confirm-new {
+      margin-top: 8px;
+      padding: 8px 20px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      color: var(--text-muted);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .bd-confirm-new:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Inline error */
+    .bd-field-error {
+      font-size: 11px;
+      color: #f87171;
+      display: none;
+      margin-top: 2px;
+    }
+
+    .bd-field-error.show { display: block; }
+
     /* ── Footer ── */
     #bd-footer {
       text-align: center;
@@ -405,6 +644,16 @@
     <path d="M3 2h3l1.5 3.5-1.75 1.25C6.5 8.5 7.5 9.5 9.25 10.25L10.5 8.5 14 10v3c0 .55-.45 1-1 1C6.27 14 2 9.73 2 3c0-.55.45-1 1-1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
   </svg>`;
 
+  const ICON_CALENDAR = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="2.5" width="12" height="10.5" rx="2" stroke="currentColor" stroke-width="1.1"/>
+    <path d="M1 5.5h12" stroke="currentColor" stroke-width="1.1"/>
+    <path d="M4.5 1v3M9.5 1v3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+  </svg>`;
+
+  const ICON_CHECK = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M5 12l5 5L20 7" stroke="${accent}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+
   // ── Store info (fetched from BottleDesk API or from data attributes) ──────
   async function fetchStoreInfo() {
     try {
@@ -412,13 +661,50 @@
       if (!res.ok) throw new Error('not found');
       return await res.json();
     } catch {
-      // Fallback to data attributes on the script tag
       return {
         hours:   script.getAttribute('data-hours')   || 'Open daily 10am – 11pm',
         address: script.getAttribute('data-address')  || '',
         phone:   script.getAttribute('data-phone')    || '',
       };
     }
+  }
+
+  // ── Date helpers ──────────────────────────────────────────────────────────
+  function todayISO() {
+    const d = new Date();
+    return d.toISOString().slice(0, 10);
+  }
+
+  function maxDateISO() {
+    const d = new Date();
+    d.setDate(d.getDate() + 60);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function formatDateDisplay(isoDate) {
+    if (!isoDate) return '';
+    const [y, m, d] = isoDate.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return date.toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+
+  // ── Slot fetch ────────────────────────────────────────────────────────────
+  // GET /widget/slots/:storeId?date=YYYY-MM-DD&party=N
+  // Returns { slots: [ { time: "17:00", label: "5:00 PM", available: true, coversRemaining: 12 } ] }
+  async function fetchSlots(date, partySize) {
+    const res = await fetch(
+      `${apiBase}/widget/slots/${storeId}?date=${date}&party=${partySize}`
+    );
+    if (!res.ok) throw new Error(`slots ${res.status}`);
+    return res.json();
+  }
+
+  // ── Phone formatter ───────────────────────────────────────────────────────
+  function normalizePhone(raw) {
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits[0] === '1') return `+${digits}`;
+    return `+${digits}`;
   }
 
   // ── Build widget DOM inside Shadow DOM ────────────────────────────────────
@@ -462,6 +748,20 @@
       ? `<div class="bd-info-row">${ICON_PHONE}<a href="tel:${storeInfo.phone}">${storeInfo.phone}</a></div>`
       : '';
 
+    // Tab bar — only shown for hospitality tier
+    const tabBar = isHospitality ? `
+      <div id="bd-tabs">
+        <button class="bd-tab active" data-tab="chat">
+          ${ICON_CHAT.replace('class="chat-icon"', 'width="13" height="13"').replace('class="close-icon"', '')}
+          Chat
+        </button>
+        <button class="bd-tab" data-tab="reserve">
+          ${ICON_CALENDAR}
+          Book a Table
+        </button>
+      </div>
+    ` : '';
+
     panel.innerHTML = `
       <div id="bd-header">
         <div id="bd-store-name"><span>●</span> ${storeName}</div>
@@ -469,18 +769,98 @@
         ${addressLine}
         ${phoneLine}
       </div>
-      <div id="bd-messages"></div>
-      <div id="bd-quick-replies"></div>
-      <div id="bd-input-area">
-        <textarea id="bd-input" placeholder="Ask anything..." rows="1" aria-label="Message"></textarea>
-        <button id="bd-send" aria-label="Send">${ICON_SEND}</button>
+      ${tabBar}
+
+      <!-- Chat tab -->
+      <div class="bd-tab-content active" id="bd-tab-chat">
+        <div id="bd-messages"></div>
+        <div id="bd-quick-replies"></div>
+        <div id="bd-input-area">
+          <textarea id="bd-input" placeholder="Ask anything..." rows="1" aria-label="Message"></textarea>
+          <button id="bd-send" aria-label="Send">${ICON_SEND}</button>
+        </div>
       </div>
+
+      <!-- Reservation tab (hospitality only — hidden for other tiers) -->
+      ${isHospitality ? `
+      <div class="bd-tab-content" id="bd-tab-reserve">
+
+        <!-- Booking form -->
+        <div id="bd-reserve-panel">
+          <div class="bd-row">
+            <div class="bd-field">
+              <label class="bd-label">First Name</label>
+              <input class="bd-input" id="bd-res-fname" type="text" placeholder="Jane" autocomplete="given-name"/>
+              <span class="bd-field-error" id="bd-err-fname">Required</span>
+            </div>
+            <div class="bd-field">
+              <label class="bd-label">Last Name</label>
+              <input class="bd-input" id="bd-res-lname" type="text" placeholder="Smith" autocomplete="family-name"/>
+              <span class="bd-field-error" id="bd-err-lname">Required</span>
+            </div>
+          </div>
+
+          <div class="bd-field">
+            <label class="bd-label">Mobile Number (for confirmation SMS)</label>
+            <input class="bd-input" id="bd-res-phone" type="tel" placeholder="+1 604 555 0100" autocomplete="tel"/>
+            <span class="bd-field-error" id="bd-err-phone">Enter a valid phone number</span>
+          </div>
+
+          <div class="bd-row">
+            <div class="bd-field">
+              <label class="bd-label">Date</label>
+              <input class="bd-input" id="bd-res-date" type="date"
+                min="${todayISO()}" max="${maxDateISO()}"/>
+              <span class="bd-field-error" id="bd-err-date">Select a date</span>
+            </div>
+            <div class="bd-field">
+              <label class="bd-label">Party Size</label>
+              <select class="bd-select" id="bd-res-party">
+                ${[1,2,3,4,5,6,7,8,9,10,11,12].map(n =>
+                  `<option value="${n}"${n===2?' selected':''}>${n} ${n===1?'guest':'guests'}</option>`
+                ).join('')}
+              </select>
+            </div>
+          </div>
+
+          <div class="bd-field">
+            <label class="bd-label">Time</label>
+            <select class="bd-select" id="bd-res-time" disabled>
+              <option value="">— pick a date first —</option>
+            </select>
+            <div class="bd-slots-loading" id="bd-slots-loading">
+              <div class="bd-spinner"></div>
+              <span>Checking availability…</span>
+            </div>
+            <span class="bd-field-error" id="bd-err-time">Select a time</span>
+          </div>
+
+          <div class="bd-field">
+            <label class="bd-label">Notes (optional)</label>
+            <input class="bd-input" id="bd-res-notes" type="text" placeholder="Birthday, allergies, high chair…"/>
+          </div>
+
+          <button class="bd-submit" id="bd-res-submit" disabled>Request Reservation</button>
+        </div>
+
+        <!-- Confirmation screen (shown after successful booking) -->
+        <div id="bd-confirm-screen">
+          <div class="bd-confirm-icon">${ICON_CHECK}</div>
+          <div class="bd-confirm-title">You're on the list!</div>
+          <div class="bd-confirm-detail" id="bd-confirm-detail"></div>
+          <div class="bd-confirm-sms">A confirmation SMS has been sent to your phone.</div>
+          <button class="bd-confirm-new" id="bd-confirm-new">Make another reservation</button>
+        </div>
+
+      </div>
+      ` : ''}
+
       <div id="bd-footer"><a href="https://bottledesk.ai" target="_blank" rel="noopener">Powered by BottleDesk AI</a></div>
     `;
 
     shadow.appendChild(panel);
 
-    // Refs
+    // ── Refs ──
     const messagesEl     = shadow.getElementById('bd-messages');
     const inputEl        = shadow.getElementById('bd-input');
     const sendBtn        = shadow.getElementById('bd-send');
@@ -503,7 +883,7 @@
 
     renderQuickReplies(QUICK_REPLIES);
 
-    // ── Messages ──
+    // ── Chat messages ──
     function addMessage(role, text) {
       const wrap   = document.createElement('div');
       wrap.className = `bd-msg ${role}`;
@@ -533,7 +913,7 @@
       if (indicator) indicator.remove();
     }
 
-    // ── Send message ──
+    // ── Send chat message ──
     async function sendMessage(text) {
       if (!text.trim() || isTyping) return;
 
@@ -542,7 +922,6 @@
       inputEl.value    = '';
       autoResize();
 
-      // Add user message to UI + history
       addMessage('user', text);
       messages.push({ role: 'user', content: text });
       quickRepliesEl.innerHTML = '';
@@ -565,7 +944,6 @@
         addMessage('bot', reply);
         messages.push({ role: 'assistant', content: reply });
 
-        // Show follow-up quick replies if provided
         if (data.quickReplies?.length) {
           renderQuickReplies(data.quickReplies);
         }
@@ -576,7 +954,7 @@
         addMessage('bot', "Sorry, I'm having trouble connecting. Please call us directly!");
       }
 
-      isTyping        = false;
+      isTyping         = false;
       sendBtn.disabled = false;
       inputEl.focus();
     }
@@ -598,6 +976,194 @@
 
     sendBtn.addEventListener('click', () => sendMessage(inputEl.value));
 
+    // ── Tab switching ──
+    if (isHospitality) {
+      const tabs    = shadow.querySelectorAll('.bd-tab');
+      const tabChat = shadow.getElementById('bd-tab-chat');
+      const tabRes  = shadow.getElementById('bd-tab-reserve');
+
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          const target = tab.getAttribute('data-tab');
+          tabs.forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === target));
+          tabChat.classList.toggle('active', target === 'chat');
+          tabRes.classList.toggle('active',  target === 'reserve');
+          activeTab = target;
+          if (target === 'chat') inputEl.focus();
+        });
+      });
+
+      // ── Reservation form logic ──
+      const dateEl    = shadow.getElementById('bd-res-date');
+      const partyEl   = shadow.getElementById('bd-res-party');
+      const timeEl    = shadow.getElementById('bd-res-time');
+      const submitBtn = shadow.getElementById('bd-res-submit');
+      const loadingEl = shadow.getElementById('bd-slots-loading');
+      const reservePanel  = shadow.getElementById('bd-reserve-panel');
+      const confirmScreen = shadow.getElementById('bd-confirm-screen');
+      const confirmDetail = shadow.getElementById('bd-confirm-detail');
+      const confirmNew    = shadow.getElementById('bd-confirm-new');
+
+      let slotFetchTimer = null;
+
+      // Fetch slots when date or party size changes
+      async function refreshSlots() {
+        const date  = dateEl.value;
+        const party = partyEl.value;
+        if (!date) return;
+
+        timeEl.disabled = true;
+        timeEl.innerHTML = '<option value="">Loading…</option>';
+        submitBtn.disabled = true;
+        loadingEl.classList.add('show');
+
+        try {
+          const data = await fetchSlots(date, party);
+          loadingEl.classList.remove('show');
+
+          const available = (data.slots || []).filter(s => s.available);
+
+          if (available.length === 0) {
+            timeEl.innerHTML = '<option value="">No availability — try another date</option>';
+            timeEl.disabled  = true;
+            submitBtn.disabled = true;
+            return;
+          }
+
+          timeEl.innerHTML = '<option value="">— select a time —</option>' +
+            available.map(s =>
+              `<option value="${s.time}">${s.label} (${s.coversRemaining} spots left)</option>`
+            ).join('');
+          timeEl.disabled = false;
+
+        } catch (err) {
+          loadingEl.classList.remove('show');
+          console.warn('[BottleDesk widget] Slot fetch error:', err.message);
+          timeEl.innerHTML = '<option value="">Could not load times — call us directly</option>';
+          timeEl.disabled  = true;
+          submitBtn.disabled = true;
+        }
+      }
+
+      function onDateOrPartyChange() {
+        clearTimeout(slotFetchTimer);
+        slotFetchTimer = setTimeout(refreshSlots, 300);
+      }
+
+      dateEl.addEventListener('change', onDateOrPartyChange);
+      partyEl.addEventListener('change', onDateOrPartyChange);
+
+      // Enable submit once a time is selected
+      timeEl.addEventListener('change', () => {
+        submitBtn.disabled = !timeEl.value;
+      });
+
+      // ── Field validation helpers ──
+      function showError(id, msg) {
+        const el = shadow.getElementById(id);
+        if (el) { el.textContent = msg || el.textContent; el.classList.add('show'); }
+      }
+      function clearError(id) {
+        const el = shadow.getElementById(id);
+        if (el) el.classList.remove('show');
+      }
+
+      function validateForm() {
+        let valid = true;
+        const fname = shadow.getElementById('bd-res-fname').value.trim();
+        const lname = shadow.getElementById('bd-res-lname').value.trim();
+        const phone = shadow.getElementById('bd-res-phone').value.trim();
+        const date  = dateEl.value;
+        const time  = timeEl.value;
+
+        clearError('bd-err-fname');
+        clearError('bd-err-lname');
+        clearError('bd-err-phone');
+        clearError('bd-err-date');
+        clearError('bd-err-time');
+
+        if (!fname) { showError('bd-err-fname', 'First name is required'); valid = false; }
+        if (!lname) { showError('bd-err-lname', 'Last name is required'); valid = false; }
+
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length < 10) { showError('bd-err-phone', 'Enter a valid phone number'); valid = false; }
+
+        if (!date) { showError('bd-err-date', 'Select a date'); valid = false; }
+        if (!time) { showError('bd-err-time', 'Select a time'); valid = false; }
+
+        return valid;
+      }
+
+      // ── Submit reservation ──
+      submitBtn.addEventListener('click', async () => {
+        if (!validateForm()) return;
+
+        const fname   = shadow.getElementById('bd-res-fname').value.trim();
+        const lname   = shadow.getElementById('bd-res-lname').value.trim();
+        const phone   = normalizePhone(shadow.getElementById('bd-res-phone').value.trim());
+        const date    = dateEl.value;
+        const time    = timeEl.value;
+        const party   = partyEl.value;
+        const notes   = shadow.getElementById('bd-res-notes').value.trim();
+
+        submitBtn.disabled   = true;
+        submitBtn.textContent = 'Booking…';
+
+        try {
+          const res = await fetch(`${apiBase}/widget/reserve`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ storeId, name: `${fname} ${lname}`, phone, date, time, party, notes }),
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            // Slot taken — refresh slots and show error
+            submitBtn.textContent = 'Request Reservation';
+            submitBtn.disabled    = false;
+            showError('bd-err-time', data.error || 'That slot is no longer available — please pick another time');
+            timeEl.value = '';
+            submitBtn.disabled = true;
+            refreshSlots();
+            return;
+          }
+
+          // Success — show confirmation screen
+          const timeLabel = timeEl.options[timeEl.selectedIndex]?.text.split('(')[0].trim() || time;
+          confirmDetail.textContent =
+            `${fname} ${lname} · Party of ${party} · ${formatDateDisplay(date)} · ${timeLabel}`;
+
+          reservePanel.style.display  = 'none';
+          confirmScreen.classList.add('show');
+
+        } catch (err) {
+          console.warn('[BottleDesk widget] Reserve error:', err.message);
+          submitBtn.textContent = 'Request Reservation';
+          submitBtn.disabled    = false;
+          showError('bd-err-time', 'Connection error — please call us to book');
+        }
+      });
+
+      // ── Make another reservation ──
+      confirmNew.addEventListener('click', () => {
+        // Reset form
+        shadow.getElementById('bd-res-fname').value = '';
+        shadow.getElementById('bd-res-lname').value = '';
+        shadow.getElementById('bd-res-phone').value = '';
+        dateEl.value  = '';
+        partyEl.value = '2';
+        timeEl.innerHTML = '<option value="">— pick a date first —</option>';
+        timeEl.disabled  = true;
+        shadow.getElementById('bd-res-notes').value = '';
+        submitBtn.disabled    = true;
+        submitBtn.textContent = 'Request Reservation';
+
+        confirmScreen.classList.remove('show');
+        reservePanel.style.display = '';
+      });
+    }
+
     // ── Open / close ──
     function open() {
       isOpen = true;
@@ -605,15 +1171,16 @@
       launcher.classList.add('open');
       launcher.setAttribute('aria-label', 'Close chat');
       badge.classList.remove('show');
-      inputEl.focus();
 
-      // Send welcome message on first open
-      if (messages.length === 0) {
-        setTimeout(() => {
-          const welcome = `Hi! I'm the BottleDesk AI assistant for ${storeName}. How can I help you today?`;
-          addMessage('bot', welcome);
-          messages.push({ role: 'assistant', content: welcome });
-        }, 300);
+      if (activeTab === 'chat') {
+        inputEl.focus();
+        if (messages.length === 0) {
+          setTimeout(() => {
+            const welcome = `Hi! I'm the BottleDesk AI assistant for ${storeName}. How can I help you today?`;
+            addMessage('bot', welcome);
+            messages.push({ role: 'assistant', content: welcome });
+          }, 300);
+        }
       }
     }
 
@@ -626,12 +1193,10 @@
 
     launcher.addEventListener('click', () => isOpen ? close() : open());
 
-    // Close on Escape
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && isOpen) close();
     });
 
-    // Show badge after 4s to attract attention
     setTimeout(() => {
       if (!isOpen) badge.classList.add('show');
     }, 4000);
